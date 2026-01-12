@@ -20,7 +20,7 @@ def register(mcp: FastMCP):
 
     @mcp.tool()
     async def run_task(
-        task_id: Annotated[str, Field(description="The unique identifier of the task to run.")]
+        task_id: Annotated[str, Field(description="The unique identifier of the task to run.")],
     ) -> TaskRunResult:
         """
         Execute a specific task by its ID.
@@ -32,7 +32,7 @@ def register(mcp: FastMCP):
 
     @mcp.tool()
     async def get_task_state(
-        task_id: Annotated[str, Field(description="The unique identifier of the task.")]
+        task_id: Annotated[str, Field(description="The unique identifier of the task.")],
     ) -> TaskState:
         """
         Get the current execution state/statistics of a task.

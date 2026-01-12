@@ -9,6 +9,10 @@ dev:
 test:
 	uv run pytest
 
+test-integration:
+	@echo "Running integration tests..."
+	uv run --env-file .env pytest tests/test_integration.py --run-integration
+
 lint:
 	uv run ruff check --fix src
 

@@ -4,14 +4,11 @@ from typing import List, Optional
 import anyio
 
 # Import KlAkOAPI modules
-try:
-    from KlAkOAPI.AdmServer import KlAkAdmServer
-    from KlAkOAPI.ChunkAccessor import KlAkChunkAccessor
-    from KlAkOAPI.HostGroup import KlAkHostGroup
-    from KlAkOAPI.Tasks import KlAkTasks
-except ImportError:
-    pass
-
+# Import KlAkOAPI modules
+from KlAkOAPI.AdmServer import KlAkAdmServer
+from KlAkOAPI.ChunkAccessor import KlAkChunkAccessor
+from KlAkOAPI.HostGroup import KlAkHostGroup
+from KlAkOAPI.Tasks import KlAkTasks
 from src.server.ksc.errors import KscApiError, KscAuthError
 from src.server.models import HostDetail, HostInfo, TaskInfo, TaskRunResult, TaskState
 from src.server.settings import settings
@@ -72,6 +69,13 @@ class KscService:
     async def ping(self) -> str:
         return await anyio.to_thread.run_sync(self._ping_sync)
 
+    def _safe_get(self, obj, key, default):
+        """Helper to safely get values from KlAkParams objects or dicts."""
+        try:
+            return obj[key]
+        except Exception:
+            return default
+
     def _list_hosts_sync(
         self, group_name: Optional[str] = None, status: Optional[str] = None
     ) -> List[HostInfo]:
@@ -91,7 +95,7 @@ class KscService:
             res = host_group.FindHosts(
                 wstrFilter=wstr_filter,
                 vecFieldsToReturn=vec_fields,
-                vecFieldsToOrder=["KLHST_WKS_DN"],
+                vecFieldsToOrder=[],
                 pParams={"KLGRP_FIND_FROM_CUR_VS_ONLY": True},
                 lMaxLifeTime=600,
             )
@@ -110,12 +114,12 @@ class KscService:
                     for item in items_iter:
                         hosts.append(
                             HostInfo(
-                                id=str(item.get("id", "")),
-                                name=item.get("name", ""),
-                                display_name=item.get("KLHST_WKS_DN", ""),
-                                group_id=item.get("KLHST_WKS_GRP", 0),
+                                id=str(self._safe_get(item, "id", "")),
+                                name=self._safe_get(item, "name", ""),
+                                display_name=self._safe_get(item, "KLHST_WKS_DN", ""),
+                                group_id=self._safe_get(item, "KLHST_WKS_GRP", 0),
                                 group_name="Unknown",
-                                status=str(item.get("KLHST_WKS_STATUS", "0")),
+                                status=str(self._safe_get(item, "KLHST_WKS_STATUS", "0")),
                                 ip_address=None,
                             )
                         )
@@ -144,7 +148,10 @@ class KscService:
 
             data = res.RetVal()
             return HostDetail(
-                id=host_id, name=str(data.get("KLHST_WKS_DN", "Unknown")), products=[], os_info={}
+                id=host_id,
+                name=str(self._safe_get(data, "KLHST_WKS_DN", "Unknown")),
+                products=[],
+                os_info={},
             )
         except Exception as e:
             raise KscApiError(f"Failed to get host details: {e}")
@@ -191,8 +198,8 @@ class KscService:
 
                 tasks.append(
                     TaskInfo(
-                        id=str(task_data.get("lId", "")),
-                        name=task_data.get("strDisplayName", "Unknown"),
+                        id=str(self._safe_get(task_data, "lId", "")),
+                        name=self._safe_get(task_data, "strDisplayName", "Unknown"),
                         type="Unknown",
                         state="Unknown",
                     )
@@ -229,9 +236,11 @@ class KscService:
             # mapping needs to be robust, here we use defaults
             return TaskState(
                 task_id=task_id,
-                percentage=data.get("nCompletion", 0),
-                state_code=data.get("nState", 0),
-                state_desc="Running" if data.get("nState", 0) else "Unknown",  # simplified
+                percentage=self._safe_get(data, "nCompletion", 0),
+                state_code=self._safe_get(data, "nState", 0),
+                state_desc="Running"
+                if self._safe_get(data, "nState", 0)
+                else "Unknown",  # simplified
             )
         except Exception as e:
             raise KscApiError(f"Failed to get task state: {e}")
