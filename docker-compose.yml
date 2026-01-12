@@ -1,0 +1,17 @@
+services:
+  ksc-mcp:
+    build: .
+    volumes:
+      - ./.env:/app/.env
+    # For local dev, you might want to mount the app directory
+    # volumes:
+    #   - ./app:/app/app
+    env_file:
+      - .env
+    # If standard IO is needed for MCP, we need to attach to it. 
+    # Usually MCP runs via `docker run -i` or via a specific transport.
+    # If this is for SSE, we would expose ports.
+    # For now, this is a standard service definition.
+    stdin_open: true # docker run -i
+    tty: true # docker run -t
+    restart: unless-stopped
