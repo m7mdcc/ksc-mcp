@@ -85,5 +85,9 @@ make lint    # Runs ruff check
 make format  # Runs ruff format
 ```
 
-## Implementation Details
-The server wraps the official `KlAkOAPI` Python package. Since `KlAkOAPI` uses synchronous `requests`, we offload these calls to a threadpool to ensure the MCP server remains responsive and async.
+## Project Structure (Refactored)
+- **src/server/main.py**: Entry point with tool auto-discovery.
+- **src/server/models.py**: Pydantic models for strict schemas.
+- **src/server/ksc/**: Core service logic (`KscService`) wrapping `KlAkOAPI`.
+- **src/server/tools/**: Modular tool implementations (`hosts.py`, `tasks.py`).
+- **tests/**: `pytest` suite.

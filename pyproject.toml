@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-ksc-mcp = "app.main:main"
+ksc-mcp = "src.server.main:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -29,12 +29,12 @@ build-backend = "hatchling.build"
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["app"]
+packages = ["src/server"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["app"]
+src = ["src"]
 exclude = ["packages", ".enc", "__pycache__"]
 
 [tool.ruff.lint]
@@ -44,5 +44,5 @@ fixable = ["ALL"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["app/tests"]
+testpaths = ["tests"]
 pythonpath = ["."]

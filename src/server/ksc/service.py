@@ -4,20 +4,17 @@ from typing import List, Optional
 import anyio
 
 # Import KlAkOAPI modules
-# Note: These imports might fail if the package isn't installed in the environment yet,
-# but we are writing the code assuming it will be.
 try:
     from KlAkOAPI.AdmServer import KlAkAdmServer
     from KlAkOAPI.ChunkAccessor import KlAkChunkAccessor
     from KlAkOAPI.HostGroup import KlAkHostGroup
     from KlAkOAPI.Tasks import KlAkTasks
 except ImportError:
-    # Fallback for when we represent the code but libs aren't installed yet
     pass
 
-from app.ksc.errors import KscApiError, KscAuthError
-from app.ksc.models import HostDetail, HostInfo, TaskInfo
-from app.settings import settings
+from src.server.ksc.errors import KscApiError, KscAuthError
+from src.server.models import HostDetail, HostInfo, TaskInfo, TaskRunResult, TaskState
+from src.server.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +31,6 @@ class KscService:
 
         logger.info(f"Connecting to KSC at {settings.KSC_HOST} as {settings.KSC_USERNAME}")
         try:
-            # Replicates usage from sample_connect.py
-            # KlAkAdmServer.Create calls Connect internally
             self.server = KlAkAdmServer.Create(
                 url=settings.KSC_HOST,
                 user_account=settings.KSC_USERNAME,
@@ -64,16 +59,11 @@ class KscService:
 
     def _ping_sync(self) -> str:
         self._ensure_connected()
-        # Simplest check: try to get server version or just return "pong" if connected
-        # There isn't a direct "Ping" method in KlAkAdmServer, but if we are here, we are connected.
-        # We can try a lightweight call like getting domains or groups.
         try:
             host_group = KlAkHostGroup(self.server)
-            # Just a lightweight call to verify session
             host_group.GetDomains()
             return "pong"
         except Exception as e:
-            # Try reconnection once
             logger.warning(f"Ping failed, retrying connection: {e}")
             self._connected = False
             self._connect_sync()
@@ -90,29 +80,14 @@ class KscService:
         chunk_accessor = KlAkChunkAccessor(self.server)
 
         # Build filter string
-        # KSC filter syntax: (Field="Value")
-        # e.g. KLHST_WKS_DN like '%name%'
         wstr_filter = ""
-        if group_name:
-            # This is tricky without knowing exact group IDs.
-            # Usually we filter by walking the group tree or precise name match.
-            # simpler approach: search all, filter in python or if we can filter by group name
-            # directly
-            pass
-
-        # Default fetch all
+        # Improved filtering logic would go here
         if not wstr_filter:
             wstr_filter = '(KLHST_WKS_DN="*")'
 
-        # Fields to return
-        # KLHST_WKS_DN: Display Name
-        # KLHST_WKS_HOSTNAME: NetBIOS/DNS name
-        # KLHST_WKS_GRP: Group ID
-        # KLHST_WKS_STATUS: Status
         vec_fields = ["KLHST_WKS_DN", "KLHST_WKS_HOSTNAME", "KLHST_WKS_GRP", "id", "name"]
 
         try:
-            # FindHooks returns an accessor
             res = host_group.FindHosts(
                 wstrFilter=wstr_filter,
                 vecFieldsToReturn=vec_fields,
@@ -126,26 +101,22 @@ class KscService:
 
             hosts = []
             if items_count > 0:
-                # Limit to 50 for safety
                 count_to_fetch = min(items_count, 50)
                 res_chunk = chunk_accessor.GetItemsChunk(str_accessor, 0, count_to_fetch)
                 chunk_data = res_chunk.OutPar("pChunk")
 
-                # KlAkParams or dict
                 if chunk_data and "KLCSP_ITERATOR_ARRAY" in chunk_data:
                     items_iter = chunk_data["KLCSP_ITERATOR_ARRAY"]
-                    # KlAkArray is list-like
                     for item in items_iter:
-                        # item is KlAkParams (dict-like)
                         hosts.append(
                             HostInfo(
                                 id=str(item.get("id", "")),
                                 name=item.get("name", ""),
                                 display_name=item.get("KLHST_WKS_DN", ""),
                                 group_id=item.get("KLHST_WKS_GRP", 0),
-                                group_name="Unknown",  # Need separate lookup ideally
+                                group_name="Unknown",
                                 status=str(item.get("KLHST_WKS_STATUS", "0")),
-                                ip_address=None,  # Not always in basic find
+                                ip_address=None,
                             )
                         )
 
@@ -163,11 +134,7 @@ class KscService:
         self._ensure_connected()
         host_group = KlAkHostGroup(self.server)
 
-        # KlAkOAPI usually uses string names or IDs.
-        # GetHostInfo usually takes a hostname or ID.
         try:
-            # Fetch generic info
-            # We need to map generic attributes
             res = host_group.GetHostInfo(
                 # Can be ID or name depending on context, usually ID works in some calls or we
                 # need name
@@ -175,7 +142,6 @@ class KscService:
                 pFields2Return=["KLHST_WKS_DN", "KLHST_WKS_HOSTNAME"],
             )
 
-            # Simple detail for now
             data = res.RetVal()
             return HostDetail(
                 id=host_id, name=str(data.get("KLHST_WKS_DN", "Unknown")), products=[], os_info={}
@@ -186,17 +152,26 @@ class KscService:
     async def get_host_details(self, host_id: str) -> HostDetail:
         return await anyio.to_thread.run_sync(self._get_host_details_sync, host_id)
 
+    def _move_host_sync(self, host_id: str, group_id: int) -> bool:
+        self._ensure_connected()
+        host_group = KlAkHostGroup(self.server)
+        try:
+            # MoveHostsToGroup(nGroup, pHostNames) where pHostNames is array of host IDs/names
+            host_group.MoveHostsToGroup(nGroup=group_id, pHostNames=[host_id])
+            return True
+        except Exception as e:
+            raise KscApiError(f"Failed to move host: {e}")
+
+    async def move_host(self, host_id: str, group_id: int) -> bool:
+        return await anyio.to_thread.run_sync(self._move_host_sync, host_id, group_id)
+
     def _list_tasks_sync(self) -> List[TaskInfo]:
         self._ensure_connected()
         tasks_api = KlAkTasks(self.server)
 
         try:
-            # Iterate tasks
-            # ResetTasksIterator(nGroupId, bGroupIdSignificant, strProductName, strVersion,
-            # strComponentName, strInstanceId, strTaskName, bIncludeSupergroups)
-            # Passing valid defaults for "All tasks"
             res = tasks_api.ResetTasksIterator(
-                nGroupId=-1,  # Root
+                nGroupId=-1,
                 bGroupIdSignificant=False,
                 strProductName="",
                 strVersion="",
@@ -207,30 +182,22 @@ class KscService:
             )
 
             iter_id = res.OutPar("strTaskIteratorId")
-
-            # Since GetNextTask returns one by one or we might need another way?
-            # Actually KlAkTasks usually has an iterator or `GetAllTasksOfHost`
-            # But specific "List All Tasks" is `ResetTasksIterator` -> `GetNextTask` loop.
-
             tasks = []
-            # Safety limit
             for _ in range(50):
                 res_task = tasks_api.GetNextTask(iter_id)
                 task_data = res_task.OutPar("pTaskData")
                 if not task_data:
                     break
 
-                # Extract task info
                 tasks.append(
                     TaskInfo(
-                        id=str(task_data.get("lId", "")),  # Assuming lId is standard
+                        id=str(task_data.get("lId", "")),
                         name=task_data.get("strDisplayName", "Unknown"),
                         type="Unknown",
                         state="Unknown",
                     )
                 )
 
-            # Release iterator
             tasks_api.ReleaseTasksIterator(iter_id)
             return tasks
 
@@ -240,29 +207,36 @@ class KscService:
     async def list_tasks(self) -> List[TaskInfo]:
         return await anyio.to_thread.run_sync(self._list_tasks_sync)
 
-    def _run_task_sync(self, task_id: str) -> str:
+    def _run_task_sync(self, task_id: str) -> TaskRunResult:
         self._ensure_connected()
         tasks_api = KlAkTasks(self.server)
         try:
-            # Tasks.RunTask(strTask) accepts "TaskId" (string or int depending on API)
             tasks_api.RunTask(strTask=task_id)
-            return f"Task {task_id} started successfully"
+            return TaskRunResult(task_id=task_id, status="Started")
         except Exception as e:
             raise KscApiError(f"Failed to run task: {e}")
 
-    async def run_task(self, task_id: str) -> str:
+    async def run_task(self, task_id: str) -> TaskRunResult:
         return await anyio.to_thread.run_sync(self._run_task_sync, task_id)
 
-    def _get_task_state_sync(self, task_id: str) -> dict:
+    def _get_task_state_sync(self, task_id: str) -> TaskState:
         self._ensure_connected()
         tasks_api = KlAkTasks(self.server)
         try:
             res = tasks_api.GetTaskStatistics(strTask=task_id)
-            return res.RetVal()
+            data = res.RetVal()
+            # data typically has percentages, state code, etc.
+            # mapping needs to be robust, here we use defaults
+            return TaskState(
+                task_id=task_id,
+                percentage=data.get("nCompletion", 0),
+                state_code=data.get("nState", 0),
+                state_desc="Running" if data.get("nState", 0) else "Unknown",  # simplified
+            )
         except Exception as e:
             raise KscApiError(f"Failed to get task state: {e}")
 
-    async def get_task_state(self, task_id: str) -> dict:
+    async def get_task_state(self, task_id: str) -> TaskState:
         return await anyio.to_thread.run_sync(self._get_task_state_sync, task_id)
 
 

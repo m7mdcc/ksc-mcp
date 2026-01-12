@@ -4,16 +4,16 @@ install:
 	uv sync
 
 dev:
-	uv run ksc-mcp
+	uv run python -m src.server.main
 
 test:
 	uv run pytest
 
 lint:
-	uv run ruff check --fix app
+	uv run ruff check --fix src
 
 format:
-	uv run ruff format app
+	uv run ruff format src
 
 docker-build:
 	docker compose build
