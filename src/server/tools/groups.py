@@ -1,4 +1,3 @@
-
 from mcp.server.fastmcp import FastMCP
 
 from server.ksc.service import ksc_service
@@ -17,6 +16,7 @@ def register(mcp: FastMCP):
         Use this to browse the group hierarchy or find specific groups by name.
         """
         import json
+
         groups = await ksc_service.list_groups(
             group_name=query.group_name, parent_id=query.parent_id
         )

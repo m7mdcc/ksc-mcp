@@ -33,9 +33,7 @@ class KscService:
                 user_account=settings.KSC_USERNAME,
                 password=settings.KSC_PASSWORD,
                 verify=(
-                    settings.KSC_CERT_PATH
-                    if settings.KSC_CERT_PATH
-                    else settings.KSC_VERIFY_SSL
+                    settings.KSC_CERT_PATH if settings.KSC_CERT_PATH else settings.KSC_VERIFY_SSL
                 ),
             )
 
@@ -115,16 +113,12 @@ class KscService:
 
         final_filter = ""
         if group_name:
-             # Reverting to original logic for group_name to avoid breaking changes in this task
-             # But it effectively filters by Host Name currently.
-             final_filter = f"(name=\"{group_name}\")"
+            # Reverting to original logic for group_name to avoid breaking changes in this task
+            # But it effectively filters by Host Name currently.
+            final_filter = f'(name="{group_name}")'
 
         if status:
-            status_map = {
-                "OK": 0,
-                "CRITICAL": 1,
-                "WARNING": 2
-            }
+            status_map = {"OK": 0, "CRITICAL": 1, "WARNING": 2}
             # Case insensitive check
             s_upper = status.upper()
             if s_upper in status_map:
@@ -164,8 +158,8 @@ class KscService:
                         # This typically maps to what GetHostInfo(strHostName=...) expects
                         unique_name = self._safe_get(item, "KLHST_WKS_HOSTNAME", "")
                         if not unique_name:
-                             # Fallback to Display Name
-                             unique_name = self._safe_get(item, "KLHST_WKS_DN", "")
+                            # Fallback to Display Name
+                            unique_name = self._safe_get(item, "KLHST_WKS_DN", "")
 
                         grp_id = self._safe_get(item, "KLHST_WKS_GRP", 0)
                         grp_name = "Unknown"
@@ -187,7 +181,8 @@ class KscService:
                                     ip_int += 2**32
                                 import socket
                                 import struct
-                                packed_ip = struct.pack('<I', ip_int)
+
+                                packed_ip = struct.pack("<I", ip_int)
                                 ip_str = socket.inet_ntoa(packed_ip)
                             except Exception:
                                 ip_str = str(ip_val)
@@ -207,7 +202,7 @@ class KscService:
                                 6: "Running (Max Speed)",
                                 7: "Running (Recommended)",
                                 8: "Running (Custom)",
-                                9: "Failure"
+                                9: "Failure",
                             }
                             rtp_desc = rtp_map.get(rtp_int, str(rtp_int))
                         except Exception:
@@ -217,15 +212,15 @@ class KscService:
                         status_id_val = self._safe_get(item, "KLHST_WKS_STATUS_ID", 0)
                         status_id_desc = "Unknown"
                         try:
-                             sid_int = int(status_id_val)
-                             if sid_int == 0:
-                                 status_id_desc = "OK"
-                             elif sid_int == 1:
-                                 status_id_desc = "Critical"
-                             elif sid_int == 2:
-                                 status_id_desc = "Warning"
-                             else:
-                                 status_id_desc = str(sid_int)
+                            sid_int = int(status_id_val)
+                            if sid_int == 0:
+                                status_id_desc = "OK"
+                            elif sid_int == 1:
+                                status_id_desc = "Critical"
+                            elif sid_int == 2:
+                                status_id_desc = "Warning"
+                            else:
+                                status_id_desc = str(sid_int)
                         except Exception:
                             status_id_desc = str(status_id_val)
 
@@ -328,8 +323,8 @@ class KscService:
                                 full_name=str(self._safe_get(item, "grp_full_name", "")),
                                 host_count=self._safe_get(item, "KLGRP_CHLDHST_CNT", 0),
                                 # TODO: Get parent ID if possible,
-                        # usually requires extra query or fields
-                                parent_id=0
+                                # usually requires extra query or fields
+                                parent_id=0,
                             )
                         )
 
@@ -431,7 +426,7 @@ class KscService:
                 iter_id = res.OutPar("strTaskIteratorId")
 
                 # Fetch tasks for this group
-                for _ in range(50): # Limit per group to avoid timeout loops
+                for _ in range(50):  # Limit per group to avoid timeout loops
                     res_task = tasks_api.GetNextTask(iter_id)
                     task_data = res_task.OutPar("pChunk")
                     if not task_data:
@@ -440,8 +435,7 @@ class KscService:
                     # Check potential ID fields
                     unique_name = self._safe_get(task_data, "TASK_UNIQUE_ID", "")
                     if not unique_name:
-                         unique_name = self._safe_get(task_data, "strName", "")
-
+                        unique_name = self._safe_get(task_data, "strName", "")
 
                     # Check if already added (simple dedup by ID)
                     t_id = str(unique_name)
@@ -495,7 +489,7 @@ class KscService:
                                 pass
 
                         if dn:
-                             friendly_name = dn
+                            friendly_name = dn
 
                     except Exception:
                         pass
@@ -516,8 +510,6 @@ class KscService:
                 continue
 
         return all_tasks
-
-
 
     async def list_tasks(self, group_id: int = -1, scan_all_groups: bool = False) -> List[TaskInfo]:
         return await anyio.to_thread.run_sync(self._list_tasks_sync, group_id, scan_all_groups)

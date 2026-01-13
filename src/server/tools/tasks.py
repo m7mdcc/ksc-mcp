@@ -15,7 +15,7 @@ def register(mcp: FastMCP):
         ),
         scan_all_groups: bool = Field(
             default=False,
-            description="If true, scans ALL groups for tasks. Ignores group_id if set."
+            description="If true, scans ALL groups for tasks. Ignores group_id if set.",
         ),
     ) -> str:
         """
@@ -30,6 +30,7 @@ def register(mcp: FastMCP):
                              Use with caution on large servers.
         """
         import json
+
         tasks = await ksc_service.list_tasks(group_id=group_id, scan_all_groups=scan_all_groups)
         return json.dumps([t.model_dump() for t in tasks], indent=2)
 

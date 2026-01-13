@@ -69,9 +69,7 @@ class GroupQuery(BaseModel):
     group_name: Optional[str] = Field(
         default=None, description="Filter by group name (supports wildcards)."
     )
-    parent_id: Optional[int] = Field(
-        default=None, description="Filter by parent group ID."
-    )
+    parent_id: Optional[int] = Field(default=None, description="Filter by parent group ID.")
 
 
 class MoveHostParams(BaseModel):

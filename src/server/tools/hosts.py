@@ -25,6 +25,7 @@ def register(mcp: FastMCP):
         If no filters are provided, it returns all visible hosts (limited by default paging).
         """
         import json
+
         hosts = await ksc_service.list_hosts(group_name=query.group_name, status=query.status)
         return json.dumps([h.model_dump() for h in hosts], indent=2)
 
@@ -42,6 +43,7 @@ def register(mcp: FastMCP):
             host_id: The unique identifier of the host (KSC ID preferred).
         """
         import json
+
         details = await ksc_service.get_host_details(host_id)
         return json.dumps(details.model_dump(), indent=2)
 
