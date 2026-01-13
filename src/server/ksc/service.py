@@ -1,8 +1,6 @@
 import logging
 from typing import List, Optional
 
-import anyio
-
 # Import KlAkOAPI modules
 from KlAkOAPI.AdmServer import KlAkAdmServer
 from KlAkOAPI.ChunkAccessor import KlAkChunkAccessor
@@ -29,11 +27,13 @@ class KscService:
         logger.info(f"Connecting to KSC at {settings.KSC_HOST} as {settings.KSC_USERNAME}")
         try:
             self.server = KlAkAdmServer.Create(
-                url=settings.KSC_HOST,
+                url=settings.KSC_HOST,  # type: ignore
                 user_account=settings.KSC_USERNAME,
                 password=settings.KSC_PASSWORD,
                 verify=(
-                    settings.KSC_CERT_PATH if settings.KSC_CERT_PATH else settings.KSC_VERIFY_SSL
+                    settings.KSC_CERT_PATH
+                    if settings.KSC_CERT_PATH
+                    else settings.KSC_VERIFY_SSL
                 ),
             )
 
@@ -50,7 +50,9 @@ class KscService:
 
     async def connect(self):
         """Async wrapper for connection."""
-        await anyio.to_thread.run_sync(self._connect_sync)
+        from anyio import to_thread
+
+        await to_thread.run_sync(self._connect_sync)
 
     def _ensure_connected(self):
         if not self._connected or not self.server:
@@ -69,7 +71,9 @@ class KscService:
             return "pong"
 
     async def ping(self) -> str:
-        return await anyio.to_thread.run_sync(self._ping_sync)
+        from anyio import to_thread
+
+        return await to_thread.run_sync(self._ping_sync)
 
     def _safe_get(self, obj, key, default):
         """Helper to safely get values from KlAkParams objects or dicts."""
@@ -336,12 +340,16 @@ class KscService:
     async def list_groups(
         self, group_name: Optional[str] = None, parent_id: Optional[int] = None
     ) -> List[GroupInfo]:
-        return await anyio.to_thread.run_sync(self._list_groups_sync, group_name, parent_id)
+        from anyio import to_thread
+
+        return await to_thread.run_sync(self._list_groups_sync, group_name, parent_id)
 
     async def list_hosts(
         self, group_name: Optional[str] = None, status: Optional[str] = None
     ) -> List[HostInfo]:
-        return await anyio.to_thread.run_sync(self._list_hosts_sync, group_name, status)
+        from anyio import to_thread
+
+        return await to_thread.run_sync(self._list_hosts_sync, group_name, status)
 
     def _get_host_details_sync(self, host_id: str) -> HostDetail:
         self._ensure_connected()
@@ -365,7 +373,9 @@ class KscService:
             raise KscApiError(f"Failed to get host details: {e}")
 
     async def get_host_details(self, host_id: str) -> HostDetail:
-        return await anyio.to_thread.run_sync(self._get_host_details_sync, host_id)
+        from anyio import to_thread
+
+        return await to_thread.run_sync(self._get_host_details_sync, host_id)
 
     def _move_host_sync(self, host_id: str, group_id: int) -> bool:
         self._ensure_connected()
@@ -378,7 +388,9 @@ class KscService:
             raise KscApiError(f"Failed to move host: {e}")
 
     async def move_host(self, host_id: str, group_id: int) -> bool:
-        return await anyio.to_thread.run_sync(self._move_host_sync, host_id, group_id)
+        from anyio import to_thread
+
+        return await to_thread.run_sync(self._move_host_sync, host_id, group_id)
 
     def _list_tasks_sync(self, group_id: int = -1, scan_all_groups: bool = False) -> List[TaskInfo]:
         self._ensure_connected()
@@ -512,7 +524,9 @@ class KscService:
         return all_tasks
 
     async def list_tasks(self, group_id: int = -1, scan_all_groups: bool = False) -> List[TaskInfo]:
-        return await anyio.to_thread.run_sync(self._list_tasks_sync, group_id, scan_all_groups)
+        from anyio import to_thread
+
+        return await to_thread.run_sync(self._list_tasks_sync, group_id, scan_all_groups)
 
     def _run_task_sync(self, task_id: str) -> TaskRunResult:
         self._ensure_connected()
@@ -524,7 +538,9 @@ class KscService:
             raise KscApiError(f"Failed to run task: {e}")
 
     async def run_task(self, task_id: str) -> TaskRunResult:
-        return await anyio.to_thread.run_sync(self._run_task_sync, task_id)
+        from anyio import to_thread
+
+        return await to_thread.run_sync(self._run_task_sync, task_id)
 
     def _get_task_state_sync(self, task_id: str) -> TaskState:
         self._ensure_connected()
@@ -546,7 +562,9 @@ class KscService:
             raise KscApiError(f"Failed to get task state: {e}")
 
     async def get_task_state(self, task_id: str) -> TaskState:
-        return await anyio.to_thread.run_sync(self._get_task_state_sync, task_id)
+        from anyio import to_thread
+
+        return await to_thread.run_sync(self._get_task_state_sync, task_id)
 
 
 ksc_service = KscService()

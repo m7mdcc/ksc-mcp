@@ -53,3 +53,8 @@ markers = [
 filterwarnings = [
     "ignore::urllib3.exceptions.InsecureRequestWarning",
 ]
+
+[dependency-groups]
+dev = [
+    "ty>=0.0.11",
+]

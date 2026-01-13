@@ -19,6 +19,9 @@ lint:
 format:
 	uv run ruff format src
 
+check:
+	uv run ty check src
+
 run-inspector:
 	npx @modelcontextprotocol/inspector uv run ksc-mcp
 
