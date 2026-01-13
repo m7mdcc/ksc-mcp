@@ -4,7 +4,7 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
 from server.ksc.service import ksc_service
-from server.models import HostDetail, HostInfo, HostQuery, MoveHostParams
+from server.models import HostQuery, MoveHostParams
 
 # Defines tools for manipulating hosts and groups
 
@@ -17,7 +17,6 @@ def register(mcp: FastMCP):
 
         Returns a JSON string of host objects.
         Use this tool to find hosts by group name or status.
-        
         Status Filter Options:
         - "Critical": List devices with critical health status (e.g. protection off, viruses found).
         - "Warning": List devices with warning status (e.g. databases outdated).
