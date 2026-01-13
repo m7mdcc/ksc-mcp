@@ -69,3 +69,6 @@ uv.lock
 # Spec-Kit
 .gemini/
 .specify/
+
+# Debug
+debug/

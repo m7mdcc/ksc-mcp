@@ -11,28 +11,40 @@ from server.models import HostDetail, HostInfo, HostQuery, MoveHostParams
 
 def register(mcp: FastMCP):
     @mcp.tool()
-    async def get_hosts(query: HostQuery) -> list[HostInfo]:
+    async def get_hosts(query: HostQuery) -> str:
         """
         Search for managed devices (hosts) in KSC.
 
+        Returns a JSON string of host objects.
         Use this tool to find hosts by group name or status.
+        
+        Status Filter Options:
+        - "Critical": List devices with critical health status (e.g. protection off, viruses found).
+        - "Warning": List devices with warning status (e.g. databases outdated).
+        - "OK": List devices with healthy status.
+
         If no filters are provided, it returns all visible hosts (limited by default paging).
         """
-        return await ksc_service.list_hosts(group_name=query.group_name, status=query.status)
+        import json
+        hosts = await ksc_service.list_hosts(group_name=query.group_name, status=query.status)
+        return json.dumps([h.model_dump() for h in hosts], indent=2)
 
     @mcp.tool()
     async def get_host_details(
         host_id: Annotated[
             str, Field(description="The unique identifier of the host (KSC ID preferred).")
         ],
-    ) -> HostDetail:
+    ) -> str:
         """
         Retrieve detailed information about a specific host.
 
+        Returns a JSON string of details.
         Args:
             host_id: The unique identifier of the host (KSC ID preferred).
         """
-        return await ksc_service.get_host_details(host_id)
+        import json
+        details = await ksc_service.get_host_details(host_id)
+        return json.dumps(details.model_dump(), indent=2)
 
     @mcp.tool()
     async def move_host(params: MoveHostParams) -> bool:

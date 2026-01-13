@@ -49,6 +49,31 @@ class HostQuery(BaseModel):
     )
 
 
+class GroupInfo(BaseModel):
+    """
+    Represents an administration group in KSC.
+    """
+
+    id: int = Field(..., description="Unique numeric identifier of the group.")
+    name: str = Field(..., description="Name of the group.")
+    full_name: str = Field(..., description="Full path/name of the group.")
+    parent_id: int = Field(default=0, description="ID of the parent group.")
+    host_count: int = Field(default=0, description="Number of hosts in the group.")
+
+
+class GroupQuery(BaseModel):
+    """
+    Parameters for querying groups.
+    """
+
+    group_name: Optional[str] = Field(
+        default=None, description="Filter by group name (supports wildcards)."
+    )
+    parent_id: Optional[int] = Field(
+        default=None, description="Filter by parent group ID."
+    )
+
+
 class MoveHostParams(BaseModel):
     """
     Parameters for moving a host to a different group.

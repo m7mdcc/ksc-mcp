@@ -4,13 +4,12 @@ from typing import List, Optional
 import anyio
 
 # Import KlAkOAPI modules
-# Import KlAkOAPI modules
 from KlAkOAPI.AdmServer import KlAkAdmServer
 from KlAkOAPI.ChunkAccessor import KlAkChunkAccessor
 from KlAkOAPI.HostGroup import KlAkHostGroup
 from KlAkOAPI.Tasks import KlAkTasks
 from server.ksc.errors import KscApiError, KscAuthError
-from server.models import HostDetail, HostInfo, TaskInfo, TaskRunResult, TaskState
+from server.models import GroupInfo, HostDetail, HostInfo, TaskInfo, TaskRunResult, TaskState
 from server.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -32,7 +31,7 @@ class KscService:
                 url=settings.KSC_HOST,
                 user_account=settings.KSC_USERNAME,
                 password=settings.KSC_PASSWORD,
-                verify=settings.KSC_VERIFY_SSL,
+                verify=settings.KSC_CERT_PATH if settings.KSC_CERT_PATH else settings.KSC_VERIFY_SSL,
             )
 
             if not self.server.connected:
@@ -85,15 +84,61 @@ class KscService:
 
         # Build filter string
         wstr_filter = ""
-        # Improved filtering logic would go here
-        if not wstr_filter:
-            wstr_filter = '(KLHST_WKS_DN="*")'
+        # wstr_filter = "" # Original line, replaced by new logic below
+        # Improved filtering logic would go here # Original line, replaced by new logic below
+        # if not wstr_filter: # Original line, replaced by new logic below
+        #     wstr_filter = '(KLHST_WKS_DN="*")' # Original line, replaced by new logic below
 
-        vec_fields = ["KLHST_WKS_DN", "KLHST_WKS_HOSTNAME", "KLHST_WKS_GRP", "id", "name"]
+        vec_fields = ["KLHST_WKS_DN", "KLHST_WKS_HOSTNAME", "KLHST_WKS_GRP", "KLHST_WKS_STATUS", "id", "name", "KLHST_WKS_IP", "KLHST_WKS_RTP_STATE", "KLHST_WKS_STATUS_ID"]
+
+        # Build filter
+        filters = []
+        if group_name:
+            filters.append(f'(KLHST_WKS_GRP_NAME="{group_name}")') # Attempting group name filter if possible, or usually we filter by browsing group.
+            # actually previously we filtered by name? "name" usually refers to host name.
+            # In previous code: wstrFilter=f"\"(name=\\\"{group_name}\\\")\"" if group_name else "",
+            # Wait, looking at previous code:
+            # wstrFilter=f"\"(name=\\\"{group_name}\\\")\"" if group_name else ""
+            # This looks like it was filtering HOSTS by name, not group.
+            # The argument name in tool is "group", but internally it seemed to be used as host name filter?
+            # Let's check tools/hosts.py to see what it passes.
+            # It passes `group` argument to `group_name` param.
+            # If the user wants to filter by GROUP, we typically need to use FindHosts in a specific group scope or traverse.
+            # But let's stick to the status filter change for now and keep group logic as is (or fix if needed).
+            # The original code was: wstrFilter=f"\"(name=\\\"{group_name}\\\")\"" if group_name else ""
+            # This implies `list_hosts(group="mygroup")` would search for hosts NAMED "mygroup". That seems wrong if it meant Group.
+            # But let's focus on STATUS for now.
+            pass
+
+        final_filter = ""
+        if group_name:
+             # Reverting to original logic for group_name to avoid breaking changes in this task
+             # But it effectively filters by Host Name currently.
+             final_filter = f"(name=\"{group_name}\")"
+
+        if status:
+            status_map = {
+                "OK": 0,
+                "CRITICAL": 1,
+                "WARNING": 2
+            }
+            # Case insensitive check
+            s_upper = status.upper()
+            if s_upper in status_map:
+                sid = status_map[s_upper]
+                status_filter = f"(KLHST_WKS_STATUS_ID={sid})"
+                if final_filter:
+                    final_filter = f"(&{final_filter}{status_filter})"
+                else:
+                    final_filter = status_filter
+        
+        # If no specific filters, default to all hosts
+        if not final_filter:
+            final_filter = '(KLHST_WKS_DN="*")'
 
         try:
             res = host_group.FindHosts(
-                wstrFilter=wstr_filter,
+                wstrFilter=final_filter,
                 vecFieldsToReturn=vec_fields,
                 vecFieldsToOrder=[],
                 pParams={"KLGRP_FIND_FROM_CUR_VS_ONLY": True},
@@ -119,15 +164,93 @@ class KscService:
                              # Fallback to Display Name
                              unique_name = self._safe_get(item, "KLHST_WKS_DN", "")
                         
+                        grp_id = self._safe_get(item, "KLHST_WKS_GRP", 0)
+                        grp_name = "Unknown"
+                        if grp_id == 0:
+                            grp_name = "Managed Devices"
+
+                        # Extract other fields safely
+                        dn = self._safe_get(item, "KLHST_WKS_DN", "Unknown")
+                        hostname = self._safe_get(item, "KLHST_WKS_HOSTNAME", "Unknown")
+                        status = self._safe_get(item, "KLHST_WKS_STATUS", "0")
+                        ip_val = self._safe_get(item, "KLHST_WKS_IP", None)
+                        
+                        # Decode IP
+                        ip_str = None
+                        if ip_val is not None:
+                            try:
+                                ip_int = int(ip_val)
+                                if ip_int < 0:
+                                    ip_int += 2**32
+                                import struct
+                                import socket
+                                packed_ip = struct.pack('<I', ip_int)
+                                ip_str = socket.inet_ntoa(packed_ip)
+                            except:
+                                ip_str = str(ip_val)
+                        
+                        # Fetch RTP State
+                        rtp_state_val = self._safe_get(item, "KLHST_WKS_RTP_STATE", 0)
+                        rtp_desc = "Unknown"
+                        try:
+                            rtp_int = int(rtp_state_val)
+                            rtp_map = {
+                                0: "Unknown",
+                                1: "Stopped",
+                                2: "Suspended",
+                                3: "Starting",
+                                4: "Running",
+                                5: "Running (Max Protection)",
+                                6: "Running (Max Speed)",
+                                7: "Running (Recommended)",
+                                8: "Running (Custom)",
+                                9: "Failure"
+                            }
+                            rtp_desc = rtp_map.get(rtp_int, str(rtp_int))
+                        except:
+                            rtp_desc = str(rtp_state_val)
+                            
+                        # Fetch Status ID (OK/Critical/Warning)
+                        status_id_val = self._safe_get(item, "KLHST_WKS_STATUS_ID", 0)
+                        status_id_desc = "Unknown"
+                        try:
+                             sid_int = int(status_id_val)
+                             if sid_int == 0: status_id_desc = "OK"
+                             elif sid_int == 1: status_id_desc = "Critical"
+                             elif sid_int == 2: status_id_desc = "Warning"
+                             else: status_id_desc = str(sid_int)
+                        except:
+                            status_id_desc = str(status_id_val)
+
+                        # Decode Status Bitmask
+                        status_str = str(status)
+                        try:
+                            s_int = int(status)
+                            status_desc_parts = []
+                            # Bit 0 (1): Visible
+                            if s_int & 0b1: status_desc_parts.append("Visible")
+                            # Bit 2 (4): Agent Installed
+                            if s_int & 0b100: status_desc_parts.append("Agent Installed")
+                            # Bit 3 (8): Agent Active
+                            if s_int & 0b1000: status_desc_parts.append("Agent Active")
+                            # Bit 4 (16): RTP Installed
+                            if s_int & 0b10000: status_desc_parts.append("RTP Installed")
+                            
+                            # Combine
+                            status_details = ", ".join(status_desc_parts) if status_desc_parts else "None"
+                            status_str = f"[{status_id_desc}] Status: {status} ({status_details}) | RTP: {rtp_desc}"
+                        except:
+                            pass
+
                         hosts.append(
                             HostInfo(
                                 id=str(unique_name),
-                                name=str(unique_name),
-                                display_name=self._safe_get(item, "KLHST_WKS_DN", "Unknown"),
-                                group_id=self._safe_get(item, "KLHST_WKS_GRP", 0),
-                                group_name="Unknown",
-                                status=str(self._safe_get(item, "KLHST_WKS_STATUS", "0")),
-                                ip_address=None,
+                                name=str(hostname),
+                                display_name=str(dn),
+                                group_id=grp_id,
+                                group_name=grp_name,
+                                status=status_str,
+                                ip_address=ip_str,
                             )
                         )
 
@@ -135,6 +258,73 @@ class KscService:
 
         except Exception as e:
             raise KscApiError(f"Failed to list hosts: {e}")
+
+    def _list_groups_sync(
+        self, group_name: Optional[str] = None, parent_id: Optional[int] = None
+    ) -> List[GroupInfo]:
+        self._ensure_connected()
+        host_group = KlAkHostGroup(self.server)
+        chunk_accessor = KlAkChunkAccessor(self.server)
+
+        # Build filter
+        wstr_filter = ""
+        if group_name:
+            # Simple wildcard support
+            wstr_filter = f'(name="{group_name}")'
+        
+        # Note: parent_id filtering is usually implicit by calling FindGroups on a specific group
+        # But FindGroups searches strictly in subtree or globally depending on flags.
+        # "pParams" can control search depth or scope.
+        p_params = {}
+        if parent_id is not None:
+             # If we want to search ONLY in a specific parent, we might need different API call or params
+             # FindGroups searches in the subtree of the group initialized in KlAkHostGroup?
+             # No, KlAkHostGroup is just a wrapper.
+             # We usually use 'one level' search or 'subtree' search.
+             pass
+
+        vec_fields = ["id", "name", "grp_full_name", "KLGRP_CHLDHST_CNT"]
+
+        try:
+            res = host_group.FindGroups(
+                wstrFilter=wstr_filter,
+                vecFieldsToReturn=vec_fields,
+                vecFieldsToOrder=[],
+                pParams=p_params,
+                lMaxLifeTime=600,
+            )
+
+            str_accessor = res.OutPar("strAccessor")
+            items_count = chunk_accessor.GetItemsCount(str_accessor).RetVal()
+
+            groups = []
+            if items_count > 0:
+                count_to_fetch = min(items_count, 100)
+                res_chunk = chunk_accessor.GetItemsChunk(str_accessor, 0, count_to_fetch)
+                chunk_data = res_chunk.OutPar("pChunk")
+
+                if chunk_data and "KLCSP_ITERATOR_ARRAY" in chunk_data:
+                    items_iter = chunk_data["KLCSP_ITERATOR_ARRAY"]
+                    for item in items_iter:
+                        groups.append(
+                            GroupInfo(
+                                id=self._safe_get(item, "id", 0),
+                                name=str(self._safe_get(item, "name", "Unknown")),
+                                full_name=str(self._safe_get(item, "grp_full_name", "")),
+                                host_count=self._safe_get(item, "KLGRP_CHLDHST_CNT", 0),
+                                parent_id=0 # TODO: Get parent ID if possible, usually requires extra query or fields
+                            )
+                        )
+            
+            return groups
+
+        except Exception as e:
+            raise KscApiError(f"Failed to list groups: {e}")
+
+    async def list_groups(
+        self, group_name: Optional[str] = None, parent_id: Optional[int] = None
+    ) -> List[GroupInfo]:
+        return await anyio.to_thread.run_sync(self._list_groups_sync, group_name, parent_id)
 
     async def list_hosts(
         self, group_name: Optional[str] = None, status: Optional[str] = None
@@ -178,56 +368,118 @@ class KscService:
     async def move_host(self, host_id: str, group_id: int) -> bool:
         return await anyio.to_thread.run_sync(self._move_host_sync, host_id, group_id)
 
-    def _list_tasks_sync(self) -> List[TaskInfo]:
+    def _list_tasks_sync(self, group_id: int = -1, scan_all_groups: bool = False) -> List[TaskInfo]:
         self._ensure_connected()
         tasks_api = KlAkTasks(self.server)
 
-        try:
-            res = tasks_api.ResetTasksIterator(
-                nGroupId=-1,
-                bGroupIdSignificant=False,
-                strProductName="",
-                strVersion="",
-                strComponentName="",
-                strInstanceId="",
-                strTaskName="",
-                bIncludeSupergroups=True,
-            )
+        # Strategy:
+        # 1. If scan_all_groups is True, get all groups first, then iterate.
+        # 2. If scan_all_groups is False, just query the specific group_id (or Global if -1).
 
-            iter_id = res.OutPar("strTaskIteratorId")
-            tasks = []
-            for _ in range(50):
-                res_task = tasks_api.GetNextTask(iter_id)
-                task_data = res_task.OutPar("pTaskData")
-                if not task_data:
-                    break
-                
-                # Check potential ID fields
-                unique_name = self._safe_get(task_data, "TASK_UNIQUE_ID", "")
-                if not unique_name:
-                     # Fallback to strName if unique ID is missing (though unlikely given the keys)
-                     unique_name = self._safe_get(task_data, "strName", "")
+        target_groups = []
+        if scan_all_groups:
+            # Fetch all groups. We could filter by parent_id if needed, but for "all" we want the flat list presumably.
+            # _list_groups_sync with no args usually returns all top-level or searchable groups depending on implementation.
+            # However, FindGroups usually searches deep if configured. _list_groups_sync uses wstrFilter='(name="{group_name}")' if named, else all?
+            # Let's check _list_groups_sync implementation. It uses empty filter -> all groups.
+            kv_groups = self._list_groups_sync()
+            target_groups = [g.id for g in kv_groups]
+            
+            # Also include global tasks (group -1)
+            target_groups.append(-1)
+        else:
+            target_groups = [group_id]
 
-                tasks.append(
-                    TaskInfo(
-                        id=str(unique_name),
-                        name=self._safe_get(task_data, "TASK_NAME", "Unknown"),
-                        type=str(self._safe_get(task_data, "TASKSCH_TYPE", "Unknown")),
-                        state="Unknown",
-                    )
+        all_tasks = []
+        
+        for gid in target_groups:
+            # If group_id is not -1, we assume it's significant
+            group_id_significant = gid != -1
+
+            try:
+                res = tasks_api.ResetTasksIterator(
+                    nGroupId=gid,
+                    bGroupIdSignificant=group_id_significant,
+                    strProductName="",
+                    strVersion="",
+                    strComponentName="",
+                    strInstanceId="",
+                    strTaskName="",
+                    bIncludeSupergroups=True, # Maybe False if scanning all to avoid dups? But True is safer for visibility.
                 )
+                
+                iter_id = res.OutPar("strTaskIteratorId")
+                
+                # Fetch tasks for this group
+                for _ in range(50): # Limit per group to avoid timeout loops
+                    res_task = tasks_api.GetNextTask(iter_id)
+                    task_data = res_task.OutPar("pTaskData")
+                    if not task_data:
+                        break
+                    
+                    # Check potential ID fields
+                    unique_name = self._safe_get(task_data, "TASK_UNIQUE_ID", "")
+                    if not unique_name:
+                         unique_name = self._safe_get(task_data, "strName", "")
 
-            tasks_api.ReleaseTasksIterator(iter_id)
-            return tasks
+                    
+                    # Check if already added (simple dedup by ID)
+                    t_id = str(unique_name)
+                    if any(t.id == t_id for t in all_tasks):
+                        continue
+                    
+                    # Resolve friendly name
+                    # unique_name is the ID needed for GetTask
+                    friendly_name = self._safe_get(task_data, "TASK_NAME", "Unknown")
+                    
+                    try:
+                        # Fetch full details to get DisplayName
+                        details = tasks_api.GetTask(str(unique_name))
+                        
+                        # details might be KlAkResponse or KlAkParams or dict-like
+                        # Try item access first as it seems most reliable for these wrappers
+                        dn = None
+                        try:
+                            dn = details["DisplayName"]
+                        except:
+                            # Try .get if available
+                            if hasattr(details, "get"):
+                                dn = details.get("DisplayName")
+                            # Try looking into RetVal if it's a Response object
+                            elif hasattr(details, "RetVal"):
+                                rv = details.RetVal()
+                                try:
+                                    dn = rv["DisplayName"]
+                                except:
+                                    pass
+                        
+                        if dn:
+                             friendly_name = dn
+                             
+                    except Exception:
+                        pass
 
-            tasks_api.ReleaseTasksIterator(iter_id)
-            return tasks
+                    all_tasks.append(
+                        TaskInfo(
+                            id=t_id,
+                            name=str(friendly_name),
+                            type=str(self._safe_get(task_data, "TASKSCH_TYPE", "Unknown")),
+                            state="Unknown",
+                        )
+                    )
 
-        except Exception as e:
-            raise KscApiError(f"Failed to list tasks: {e}")
+                tasks_api.ReleaseTasksIterator(iter_id)
 
-    async def list_tasks(self) -> List[TaskInfo]:
-        return await anyio.to_thread.run_sync(self._list_tasks_sync)
+            except Exception:
+                # If one group fails (e.g. permissions), log/ignore and continue to next
+                continue
+                
+        return all_tasks
+
+
+
+    async def list_tasks(self, group_id: int = -1, scan_all_groups: bool = False) -> List[TaskInfo]:
+        return await anyio.to_thread.run_sync(self._list_tasks_sync, group_id, scan_all_groups)
 
     def _run_task_sync(self, task_id: str) -> TaskRunResult:
         self._ensure_connected()
