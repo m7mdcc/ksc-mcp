@@ -9,9 +9,9 @@ from KlAkOAPI.AdmServer import KlAkAdmServer
 from KlAkOAPI.ChunkAccessor import KlAkChunkAccessor
 from KlAkOAPI.HostGroup import KlAkHostGroup
 from KlAkOAPI.Tasks import KlAkTasks
-from src.server.ksc.errors import KscApiError, KscAuthError
-from src.server.models import HostDetail, HostInfo, TaskInfo, TaskRunResult, TaskState
-from src.server.settings import settings
+from server.ksc.errors import KscApiError, KscAuthError
+from server.models import HostDetail, HostInfo, TaskInfo, TaskRunResult, TaskState
+from server.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -112,11 +112,18 @@ class KscService:
                 if chunk_data and "KLCSP_ITERATOR_ARRAY" in chunk_data:
                     items_iter = chunk_data["KLCSP_ITERATOR_ARRAY"]
                     for item in items_iter:
+                        # Use KLHST_WKS_HOSTNAME (Network Name) as the ID for MCP lookups
+                        # This typically maps to what GetHostInfo(strHostName=...) expects
+                        unique_name = self._safe_get(item, "KLHST_WKS_HOSTNAME", "")
+                        if not unique_name:
+                             # Fallback to Display Name
+                             unique_name = self._safe_get(item, "KLHST_WKS_DN", "")
+                        
                         hosts.append(
                             HostInfo(
-                                id=str(self._safe_get(item, "id", "")),
-                                name=self._safe_get(item, "name", ""),
-                                display_name=self._safe_get(item, "KLHST_WKS_DN", ""),
+                                id=str(unique_name),
+                                name=str(unique_name),
+                                display_name=self._safe_get(item, "KLHST_WKS_DN", "Unknown"),
                                 group_id=self._safe_get(item, "KLHST_WKS_GRP", 0),
                                 group_name="Unknown",
                                 status=str(self._safe_get(item, "KLHST_WKS_STATUS", "0")),
@@ -140,8 +147,7 @@ class KscService:
 
         try:
             res = host_group.GetHostInfo(
-                # Can be ID or name depending on context, usually ID works in some calls or we
-                # need name
+                # host_id must be the unique string name (GUID-like) or Network Name
                 strHostName=host_id,
                 pFields2Return=["KLHST_WKS_DN", "KLHST_WKS_HOSTNAME"],
             )
@@ -195,15 +201,24 @@ class KscService:
                 task_data = res_task.OutPar("pTaskData")
                 if not task_data:
                     break
+                
+                # Check potential ID fields
+                unique_name = self._safe_get(task_data, "TASK_UNIQUE_ID", "")
+                if not unique_name:
+                     # Fallback to strName if unique ID is missing (though unlikely given the keys)
+                     unique_name = self._safe_get(task_data, "strName", "")
 
                 tasks.append(
                     TaskInfo(
-                        id=str(self._safe_get(task_data, "lId", "")),
-                        name=self._safe_get(task_data, "strDisplayName", "Unknown"),
-                        type="Unknown",
+                        id=str(unique_name),
+                        name=self._safe_get(task_data, "TASK_NAME", "Unknown"),
+                        type=str(self._safe_get(task_data, "TASKSCH_TYPE", "Unknown")),
                         state="Unknown",
                     )
                 )
+
+            tasks_api.ReleaseTasksIterator(iter_id)
+            return tasks
 
             tasks_api.ReleaseTasksIterator(iter_id)
             return tasks

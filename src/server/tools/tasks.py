@@ -3,8 +3,8 @@ from typing import Annotated
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
-from src.server.ksc.service import ksc_service
-from src.server.models import TaskInfo, TaskRunResult, TaskState
+from server.ksc.service import ksc_service
+from server.models import TaskInfo, TaskRunResult, TaskState
 
 
 def register(mcp: FastMCP):

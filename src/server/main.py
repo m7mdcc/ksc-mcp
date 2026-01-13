@@ -14,9 +14,9 @@ mcp = FastMCP("ksc-mcp")
 
 def load_tools():
     """
-    Auto-discovers and registers tools from the src.server.tools package.
+    Auto-discovers and registers tools from the server.tools package.
     """
-    import src.server.tools as tools_pkg
+    import server.tools as tools_pkg
 
     package_path = tools_pkg.__path__
     prefix = tools_pkg.__name__ + "."

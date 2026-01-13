@@ -57,11 +57,35 @@ Add the following to your `claude_desktop_config.json`:
         "C:\\path\\to\\ksc-mcp",
         "run",
         "ksc-mcp"
-      ]
+      ],
+      "env": {
+        "KSC_HOST": "https://your-ksc-server:13299",
+        "KSC_USERNAME": "user",
+        "KSC_PASSWORD": "password",
+        "KSC_VERIFY_SSL": "false"
+      }
     }
   }
 }
 ```
+
+### Using with Claude Code
+To add this server to the `claude` CLI:
+
+```bash
+claude mcp add ksc -- uv --directory C:\path\to\ksc-mcp run ksc-mcp
+```
+*Note: Ensure environment variables are set in your shell or the `.env` file is present in the working directory.*
+
+### Using with Other Tools (Cursor/Windsurf in Agent Mode)
+For tools that support MCP via command configuration:
+
+**Command**: `uv`
+**Arguments**:
+- `--directory`
+- `C:\path\to\ksc-mcp`
+- `run`
+- `ksc-mcp`
 
 ## Development Workflow
 

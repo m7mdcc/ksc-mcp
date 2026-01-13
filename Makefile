@@ -4,7 +4,7 @@ install:
 	uv sync
 
 dev:
-	uv run python -m src.server.main
+	uv run python -m server.main
 
 test:
 	uv run pytest
@@ -18,6 +18,9 @@ lint:
 
 format:
 	uv run ruff format src
+
+run-inspector:
+	npx @modelcontextprotocol/inspector uv run ksc-mcp
 
 docker-build:
 	docker compose build

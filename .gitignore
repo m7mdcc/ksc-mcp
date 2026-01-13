@@ -65,3 +65,7 @@ uv.lock
 # We ignore the unpacked package source if we only want to track the tarball,
 # but since we are installing from source now, we might want to keep it or ignore it depending on user pref.
 # For now, we assume user keeps the packages folder as it is a local dependency.
+
+# Spec-Kit
+.gemini/
+.specify/

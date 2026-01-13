@@ -20,7 +20,7 @@ dependencies = [
 ]
 
 [project.scripts]
-ksc-mcp = "src.server.main:main"
+ksc-mcp = "server.main:main"
 
 [build-system]
 requires = ["hatchling"]

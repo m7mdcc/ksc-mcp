@@ -1,11 +1,11 @@
 import pytest
 from unittest.mock import AsyncMock, patch
-from src.server.models import HostInfo
-from src.server.ksc.service import KscService
+from server.models import HostInfo
+from server.ksc.service import KscService
 
 @pytest.fixture
 def mock_ksc_service():
-    with patch("src.server.ksc.service.ksc_service", new_callable=AsyncMock) as mock:
+    with patch("server.ksc.service.ksc_service", new_callable=AsyncMock) as mock:
         yield mock
 
 @pytest.mark.asyncio
